@@ -3,14 +3,21 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/prd-generator",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
-      "source": "/prd-generator",
-      "destination": "/prd-generator/index.html"
+      "source": "/prd-generator/(.*)",
+      "destination": "/index.html"
     },
     {
-      "source": "/prd-generator/(.*)",
-      "destination": "/prd-generator/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
