@@ -1,0 +1,635 @@
+{
+  "name": "PRD Generator (Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## PRD Generator (2 Fase + Approval)\r\nFase 1 - ANALISIS: POST /prd-analyze dengan { \"ide\": \"...\", \"preferensi\": { \"sertakan_tech_stack\": bool, \"sertakan_kode\": bool }, \"design_system\": \"...\" } → Qwen eksplorasi + analisis risiko/peluang/biaya → JSON analisis dikembalikan ke web untuk DIPERIKSA & DISETUJUI pengguna.\r\nFase 2 - GENERATE (setelah approval): POST /prd-generate dengan { \"ide\": \"...\", \"preferensi\": {...}, \"design_system\": \"...\", \"analisis\": { hasil analisis fase 1 } } → Qwen breakdown tahapan → fan-out per tahapan → DeepSeek PRD (6 bagian kecil, hormati preferensi tech stack/kode & design system, tiap PRD diakhiri Verifikasi/Definition of Done, max_tokens 8192) → auto-lanjut bila terpotong → merge + cek kelengkapan → aggregate (termasuk hasil analisis) → JSON response.\r\n",
+        "width": 400,
+        "color": 4
+      },
+      "id": "532f4302-b789-483e-ba9e-07a3bf325b08",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prd-analyze",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "16202b22-3bc3-45d8-88e2-5aa37aa05290",
+      "name": "Webhook Analyze",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "c1765184-f027-4181-9c6f-9cf505318b95"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const idea = ($json.body && $json.body.ide) ? $json.body.ide : '';\r\nconst pref = ($json.body && $json.body.preferensi) ? $json.body.preferensi : {};\r\nconst designSystem = ($json.body && $json.body.design_system) ? String($json.body.design_system) : '';\r\nconst sertakanStack = (pref.sertakan_tech_stack === undefined) ? true : !!pref.sertakan_tech_stack;\r\nconst sertakanKode = (pref.sertakan_kode === undefined) ? true : !!pref.sertakan_kode;\r\nconst prompt = `Kamu adalah seorang Product Strategist senior yang berpengalaman membangun web dan aplikasi digital.\r\n\r\nPengguna mengirimkan sebuah ide mentah untuk aplikasi:\r\n\r\n\"${idea}\"\r\n\r\nPREFERENSI PENGGUNA (patuhi ini):\r\n- Sertakan tech stack di PRD: ${sertakanStack ? 'YA' : 'TIDAK'}\r\n- Sertakan kode/coding di PRD: ${sertakanKode ? 'YA' : 'TIDAK'}\r\n- Design system yang dipilih: ${designSystem || 'belum ditentukan'}\r\n\r\nTugasmu - PIKIRKAN DENGAN SANGAT MATANG sebelum menetapkan arah:\r\n1. Pahami dan identifikasi inti dari ide ini\r\n2. Eksplorasi dan perkuat ide: siapa target penggunanya, apa problem utama yang diselesaikan, apa value proposition-nya\r\n3. Tentukan scope awal: apakah ini web app, mobile app, atau keduanya\r\n4. Identifikasi fitur-fitur inti yang WAJIB ada (must-have) vs nice-to-have\r\n5. Tentukan tech complexity level: Simple / Medium / Complex\r\n6. ANALISIS RISIKO & PELUANG: sebutkan risiko-risiko utama (teknis, bisnis, pasar, regulasi) beserta dampak dan mitigasinya, serta peluang-peluang yang bisa dimaksimalkan.\r\n7. ANALISIS BIAYA: nilai dengan jujur apakah ada biaya yang perlu dikeluarkan untuk membangun aplikasi ini. Jika ada, sebutkan di komponen mana biaya keluar dan perkiraannya. Jika tidak ada biaya berarti, katakan demikian.\r\n\r\nOutput dalam format JSON berikut (tidak ada teks di luar JSON):\r\n{\r\n  \"project_name\": \"nama singkat project\",\r\n  \"ide_inti\": \"penjelasan 2-3 kalimat tentang ide\",\r\n  \"target_pengguna\": \"deskripsi target user\",\r\n  \"problem_yang_diselesaikan\": \"problem utama\",\r\n  \"value_proposition\": \"nilai utama produk ini\",\r\n  \"platform\": \"web / mobile / keduanya\",\r\n  \"fitur_inti\": [\"fitur 1\", \"fitur 2\", \"dst\"],\r\n  \"fitur_nice_to_have\": [\"fitur a\", \"fitur b\"],\r\n  \"complexity_level\": \"Simple / Medium / Complex\",\r\n  \"estimasi_skala\": \"MVP / Startup Product / Enterprise\",\r\n  \"resiko\": [\r\n    { \"resiko\": \"deskripsi risiko\", \"dampak\": \"Tinggi/Sedang/Rendah\", \"mitigasi\": \"cara memitigasi\" }\r\n  ],\r\n  \"peluang\": [\"peluang 1\", \"peluang 2\"],\r\n  \"analisis_biaya\": {\r\n    \"ada_biaya\": true,\r\n    \"kesimpulan\": \"satu kalimat kesimpulan apakah ada biaya dan seberapa besar\",\r\n    \"rincian_biaya\": [\r\n      { \"komponen\": \"nama komponen biaya\", \"keterangan\": \"kenapa/untuk apa\", \"kira_kira\": \"perkiraan nominal atau rentang\" }\r\n    ]\r\n  }\r\n}`;\r\nreturn { prompt };\r\n"
+      },
+      "id": "4821a6dd-433e-41e4-a35b-7728b9a45ae9",
+      "name": "Build Step 1 Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "alibabaCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"qwen-plus\", temperature: 0.7, response_format: { type: \"json_object\" }, messages: [{ role: \"user\", content: $json.prompt }] }) }}",
+        "options": {}
+      },
+      "id": "acf8a69e-07fb-4928-93da-75792defe386",
+      "name": "Qwen - Explore Idea",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "alibabaCloudApi": {
+          "id": "duzMd4t6a7xQzULe",
+          "name": "Qwen Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\r\nlet text = '{}';\r\ntry { text = items[0].json.choices[0].message.content; } catch (e) {}\r\nlet ide_result;\r\ntry { ide_result = JSON.parse(text); } catch (e) { ide_result = { raw: text }; }\r\nconst wb = ($('Webhook Analyze').first().json.body) ? $('Webhook Analyze').first().json.body : {};\r\nconst pref = (wb.preferensi && typeof wb.preferensi === 'object') ? wb.preferensi : {};\r\nreturn [{ json: { ide_result, preferensi: pref } }];\r\n"
+      },
+      "id": "2a787938-cd19-4b6e-a78d-f2da94adf210",
+      "name": "Parse Ide Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ide = $('Prepare Generate Input').first().json.ide_result;\r\nconst designSystem = $('Prepare Generate Input').first().json.design_system || '';\r\nconst prompt = `Kamu adalah seorang Senior Software Architect dan Product Manager.\r\n\r\nBerikut adalah hasil analisis ide sebuah aplikasi:\r\n\r\n${JSON.stringify(ide)}\r\n\r\nDesign system UI yang dipilih pengguna: ${designSystem || 'belum ditentukan'}\r\n\r\nTugasmu: Pecah development aplikasi ini menjadi TAHAPAN-TAHAPAN eksekusi yang logis dan terstruktur.\r\n\r\nATURAN PENTING:\r\n- Jumlah tahapan TIDAK BOLEH dipatok — sesuaikan dengan complexity_level dari hasil analisis\r\n- Simple -> biasanya 3-4 tahapan\r\n- Medium -> biasanya 5-7 tahapan\r\n- Complex -> biasanya 7-12 tahapan\r\n- Setiap tahapan harus bisa berdiri sendiri dan deliverable-nya jelas\r\n- Urutkan dari fondasi teknis -> core features -> advanced features -> polish & launch\r\n- Tiap tahapan harus realistis untuk dikerjakan sebagai satu sprint / siklus kerja\r\n\r\nOutput dalam format JSON berikut (tidak ada teks di luar JSON):\r\n{\r\n  \"project_name\": \"nama project\",\r\n  \"total_tahapan\": 0,\r\n  \"tahapan\": [\r\n    {\r\n      \"nomor\": 1,\r\n      \"nama_tahapan\": \"nama singkat\",\r\n      \"deskripsi\": \"apa yang dikerjakan di tahapan ini\",\r\n      \"deliverable\": \"output konkret yang dihasilkan\",\r\n      \"dependencies\": \"tahapan sebelumnya yang harus selesai (tulis 'none' jika tidak ada)\",\r\n      \"estimasi_durasi\": \"misal: 1-2 minggu\",\r\n      \"tech_focus\": [\"teknologi / area yang jadi fokus\"]\r\n    }\r\n  ]\r\n}`;\r\nreturn [{ json: { prompt } }];\r\n"
+      },
+      "id": "13fbd74a-bdd3-4372-bf5b-e4ce015f9ac0",
+      "name": "Build Step 2 Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "alibabaCloudApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"qwen-plus\", temperature: 0.5, response_format: { type: \"json_object\" }, messages: [{ role: \"user\", content: $json.prompt }] }) }}",
+        "options": {}
+      },
+      "id": "a6d1b59f-9ec0-43f6-ac1d-ea798498f243",
+      "name": "Qwen - Breakdown Tahapan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1120,
+        0
+      ],
+      "credentials": {
+        "alibabaCloudApi": {
+          "id": "duzMd4t6a7xQzULe",
+          "name": "Qwen Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet text = '{}';\ntry { text = items[0].json.choices[0].message.content; } catch (e) {}\nlet tahapan_result;\ntry { tahapan_result = JSON.parse(text); } catch (e) { tahapan_result = { tahapan: [] }; }\nif (!Array.isArray(tahapan_result.tahapan)) { tahapan_result.tahapan = []; }\nreturn [{ json: { tahapan_result } }];"
+      },
+      "id": "73c7841d-37b3-4670-9570-9c80cfa7c010",
+      "name": "Parse Tahapan Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tr = $('Parse Tahapan Result').first().json.tahapan_result;\nconst list = (tr && Array.isArray(tr.tahapan)) ? tr.tahapan : [];\nreturn list.map(t => ({ json: t }));"
+      },
+      "id": "306cac06-3f9c-42b5-b11f-6b0253c4c08a",
+      "name": "Split Tahapan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const allTahap = $input.all();\r\nconst ide = $('Prepare Generate Input').first().json.ide_result;\r\nconst allTahapan = $('Parse Tahapan Result').first().json.tahapan_result;\r\nconst pref = ($('Prepare Generate Input').first().json.preferensi) ? $('Prepare Generate Input').first().json.preferensi : {};\r\nconst designSystem = $('Prepare Generate Input').first().json.design_system || '';\r\nconst sertakanStack = (pref.sertakan_tech_stack === undefined) ? true : !!pref.sertakan_tech_stack;\r\nconst sertakanKode = (pref.sertakan_kode === undefined) ? true : !!pref.sertakan_kode;\r\nconst today = $now.toISODate();\r\nconst system = 'Kamu adalah Senior Product Manager yang berpengalaman menulis PRD (Product Requirements Document) yang lengkap, komprehensif, dan langsung bisa dipakai oleh tim engineering dan design. Kamu menulis PRD dalam Bahasa Indonesia yang profesional. Output kamu SELALU dalam format Markdown yang rapi dan SELALU SELESAI sampai akhir bagian (tidak pernah terpotong).';\r\n\r\nconst konteksProyek = `\r\n## KONTEKS PROJECT:\r\n${JSON.stringify(ide)}\r\n\r\n## SEMUA TAHAPAN PROJECT:\r\n${JSON.stringify(allTahapan)}\r\n\r\n## TAHAPAN YANG PERLU DIBUATKAN PRD-NYA:\r\n`;\r\n\r\nconst isiChunk4 = sertakanStack\r\n  ? `## 7. Technical Specifications (arsitektur, tech stack, data model, API endpoints, integrasi)\\nCatatan UI: gunakan design system '${designSystem || 'pilihan tim'}' untuk komponen antarmuka.`\r\n  : '## 7. Technical Specifications (arsitektur & desain sistem - TANPA tech stack / teknologi spesifik)';\r\n\r\nconst aturanKode = sertakanKode\r\n  ? '- Boleh menyertakan snippet kode/konfigurasi singkat bila relevan.'\r\n  : '- JANGAN sertakan kode/coding apa pun (source code, snippet) di dalam PRD. Cukup deskripsi fungsional dan arsitektur dalam bahasa.';\r\n\r\n// Pecah PRD menjadi 6 bagian kecil agar setiap panggilan DeepSeek pendek dan PASTI selesai\r\nconst chunkDefs = [\r\n  { nomor_chunk: 1, judul_chunk: 'Overview & Objectives', isi: `## 1. Overview Tahapan\\n## 2. Objectives & Success Criteria` },\r\n  { nomor_chunk: 2, judul_chunk: 'Scope & User Stories', isi: `## 3. Scope (In Scope / Out of Scope)\\n## 4. User Stories & Requirements (minimal 5, beri prioritas P0/P1/P2)` },\r\n  { nomor_chunk: 3, judul_chunk: 'Functional & Non-Functional', isi: `## 5. Functional Requirements (sertakan edge cases dan validasi)\\n## 6. Non-Functional Requirements (Performance, Security, Scalability, Accessibility, Compatibility)` },\r\n  { nomor_chunk: 4, judul_chunk: 'Technical Specifications', isi: isiChunk4 },\r\n  { nomor_chunk: 5, judul_chunk: 'UI/UX & Dependencies', isi: `## 8. UI/UX Requirements (halaman, user flow, komponen UI kunci)\\n## 9. Dependencies & Risks (minimal 3 risiko + mitigasi)` },\r\n  { nomor_chunk: 6, judul_chunk: 'Timeline, Questions, History & Verifikasi', isi: `## 10. Timeline & Milestones\\n## 11. Open Questions\\n## 12. Revision History (tabel: Versi | Tanggal | Perubahan | Author). Gunakan tanggal ${today}, author 'PRD Generator'.\\n## 13. Verifikasi Penyelesaian Tahapan (Definition of Done)\\n\\n### 13.1 Daftar Pengujian yang Perlu Dijalankan\\nBuat daftar pengujian yang harus dijalankan untuk tahapan ini (minimal 10 butir) dengan format \\\"- [JENIS] deskripsi skenario uji\\\" (JENIS: Unit, Integration, E2E, API, Security, Performance, UI/UX, Edge Case, Data/Validasi). Pastikan mencakup user story P0, functional requirement utama, dan skenario validasi.\\n\\n### 13.2 Kriteria Selesai (Definition of Done)\\nTulis checklist verifikasi untuk tahapan ini (setiap butir dengan checkbox). Pastikan mencakup:\\n1. Seluruh user story P0 dan P1 terpenuhi.\\n2. Setiap functional requirement (FR) utama terpenuhi beserta edge case dan validasinya.\\n3. Non-functional requirement (performance, security, scalability, accessibility) terpenuhi.\\n4. Deliverable tahapan terkirim dan dapat digunakan.\\n5. Dokumentasi lengkap.\\n6. Seluruh item Daftar Pengujian (13.1) lolos/pass.` }\r\n];\r\n\r\nconst hasil = [];\r\nfor (const it of allTahap) {\r\n  const tahap = it.json;\r\n  const konteks = konteksProyek + JSON.stringify(tahap) + '\\n';\r\n  for (const c of chunkDefs) {\r\n    const bagian = (c.nomor_chunk === 1)\r\n      ? `Tulis PERSIS bagian-bagian berikut (jangan tulis bagian lain):\\n# PRD — ${tahap.nama_tahapan}\\n\\n${c.isi}`\r\n      : `Tulis PERSIS bagian-bagian berikut (jangan tulis bagian lain):\\n${c.isi}`;\r\n    hasil.push({\r\n      json: {\r\n        system,\r\n        user: `Kamu sedang menulis PRD untuk sebuah tahapan project. Ini adalah BAGIAN ${c.nomor_chunk} dari ${chunkDefs.length} (bagian: ${c.judul_chunk}).\r\n\r\n${konteks}---\r\n${bagian}\r\n\r\n---\r\nATURAN PENTING:\r\n- Tulis HANYA bagian-bagian yang tercantum di atas, dengan heading Markdown yang jelas.\r\n- Detail, komprehensif, dan langsung ke poin.\r\n- JANGAN menulis bagian lain di luar daftar, JANGAN mengulang isi bagian sebelumnya.\r\n- ${aturanKode}\r\n- AKHIRI output kamu dengan baris penanda ini tepat di paling akhir (WAJIB):\r\n<!-- AKHIR BAGIAN ${c.nomor_chunk} -->`,\r\n        nomor: tahap.nomor,\r\n        nama_tahapan: tahap.nama_tahapan,\r\n        estimasi_durasi: tahap.estimasi_durasi,\r\n        tech_focus: tahap.tech_focus,\r\n        deliverable: tahap.deliverable,\r\n        nomor_chunk: c.nomor_chunk,\r\n        total_chunks: chunkDefs.length,\r\n        judul_chunk: c.judul_chunk\r\n      }\r\n    });\r\n  }\r\n}\r\nreturn hasil;\r\n"
+      },
+      "id": "1412c1a7-e6a9-4eba-81f9-e3811c0e9bd2",
+      "name": "Build PRD Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "deepSeekApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"deepseek-chat\", temperature: 0.4, max_tokens: 8192, messages: [{ role: \"system\", content: $json.system }, { role: \"user\", content: $json.user }] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
+          "timeout": 180000,
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 1000,
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "3a0f908e-1015-4e25-a168-cc5a38cdde11",
+      "name": "DeepSeek - Generate PRD",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2016,
+        0
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "ZSkonRExLIT44S0B",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let content = '';\nlet finish_reason = '';\ntry { content = $json.choices[0].message.content || ''; } catch (e) { content = ''; }\ntry { finish_reason = $json.choices[0].finish_reason || ''; } catch (e) { finish_reason = ''; }\nconst meta = $('Build PRD Prompt').item.json;\nreturn {\n  nomor: meta.nomor,\n  nama_tahapan: meta.nama_tahapan,\n  estimasi_durasi: meta.estimasi_durasi,\n  tech_focus: meta.tech_focus,\n  deliverable: meta.deliverable,\n  nomor_chunk: meta.nomor_chunk,\n  total_chunks: meta.total_chunks,\n  judul_chunk: meta.judul_chunk,\n  content,\n  finish_reason,\n  truncated: (finish_reason === 'length'),\n};"
+      },
+      "id": "55415348-acc0-46f7-8817-8f7246935558",
+      "name": "Extract PRD Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "a1b2c3d4-0001-4c2d-9e11-aa11bb22cc01",
+              "leftValue": "={{ $json.truncated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f0e1d2c3-0001-4c2d-9e11-aa11bb22cc02",
+      "name": "IF Truncated",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const chunk = $json;\nconst system = 'Kamu adalah Senior Product Manager yang berpengalaman menulis PRD (Product Requirements Document) yang lengkap, komprehensif, dan langsung bisa dipakai oleh tim engineering dan design. Kamu menulis PRD dalam Bahasa Indonesia yang profesional. Output kamu SELALU dalam format Markdown yang rapi dan SELALU SELESAI sampai akhir (tidak pernah terpotong).';\nconst tail = (chunk.content || '').slice(-800);\nconst user = `Sebelumnya kamu menulis BAGIAN ${chunk.nomor_chunk} dari ${chunk.total_chunks} PRD (bagian: ${chunk.judul_chunk}), tetapi output kamu TERPOTONG sebelum selesai.\n\nIni AKHIR dari teks yang sudah berhasil kamu tulis:\n---\n${tail}\n---\n\nTugasmu sekarang:\n1. LANJUTKAN penulisan PERSIS dari kalimat/poin terakhir di atas.\n2. JANGAN mengulang teks yang sudah ada.\n3. Selesaikan SELURUH sisa bagian ${chunk.nomor_chunk} sampai tuntas dan detail, format Markdown rapi.\n4. AKHIRI dengan baris penanda ini tepat di paling akhir (WAJIB):\n<!-- AKHIR BAGIAN ${chunk.nomor_chunk} -->`;\nreturn { system, user, nomor: chunk.nomor, nama_tahapan: chunk.nama_tahapan, estimasi_durasi: chunk.estimasi_durasi, tech_focus: chunk.tech_focus, deliverable: chunk.deliverable, nomor_chunk: chunk.nomor_chunk, total_chunks: chunk.total_chunks, judul_chunk: chunk.judul_chunk, originalContent: chunk.content };"
+      },
+      "id": "b1c2d3e4-0001-4c2d-9e11-aa11bb22cc03",
+      "name": "Build Continue Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.deepseek.com/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "deepSeekApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"deepseek-chat\", temperature: 0.4, max_tokens: 8192, messages: [{ role: \"system\", content: $json.system }, { role: \"user\", content: $json.user }] }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
+          "timeout": 180000,
+          "retryOnFail": true,
+          "maxTries": 3,
+          "waitBetweenTries": 1000,
+          "onError": "continueRegularOutput"
+        }
+      },
+      "id": "c2d3e4f5-0001-4c2d-9e11-aa11bb22cc04",
+      "name": "DeepSeek - Continue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2464,
+        160
+      ],
+      "credentials": {
+        "deepSeekApi": {
+          "id": "ZSkonRExLIT44S0B",
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let cont = '';\nlet fr = '';\ntry { cont = $json.choices[0].message.content || ''; } catch (e) { cont = ''; }\ntry { fr = $json.choices[0].finish_reason || ''; } catch (e) { fr = ''; }\nconst meta = $('Build Continue Prompt').item.json;\nreturn {\n  nomor: meta.nomor,\n  nama_tahapan: meta.nama_tahapan,\n  estimasi_durasi: meta.estimasi_durasi,\n  tech_focus: meta.tech_focus,\n  deliverable: meta.deliverable,\n  nomor_chunk: meta.nomor_chunk,\n  total_chunks: meta.total_chunks,\n  judul_chunk: meta.judul_chunk,\n  content: (meta.originalContent || '') + String.fromCharCode(10) + String.fromCharCode(10) + cont,\n  finish_reason: fr,\n  truncated: (fr === 'length'),\n};"
+      },
+      "id": "d3e4f5a6-0001-4c2d-9e11-aa11bb22cc05",
+      "name": "Extract Continue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2576,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst map = new Map();\nfor (const item of allItems) {\n  const j = item.json || {};\n  const key = (j.nomor !== undefined) ? String(j.nomor) : '0';\n  if (!map.has(key)) { map.set(key, { meta: j, chunks: [] }); }\n  if (j.content) { map.get(key).chunks.push(j); }\n}\nconst hasil = [];\nfor (const entry of map.values()) {\n  const meta = entry.meta;\n  const chunks = entry.chunks;\n  chunks.sort((a, b) => ((a.nomor_chunk || 0) - (b.nomor_chunk || 0)));\n  const safe = String(meta.nama_tahapan || 'tahapan').replace(/ /g, '_').split('/').join('-');\n  const missing = [];\n  const truncated = [];\n  let merged = '';\n  for (const c of chunks) {\n    const raw = (c.content || '');\n    if (!raw.trim()) { missing.push(c.nomor_chunk); }\n    else if (c.finish_reason === 'length') { truncated.push(c.nomor_chunk); }\n    const cleaned = raw.replace(/<!-- AKHIR BAGIAN \\d+ -->/g, '').trim();\n    merged += cleaned + String.fromCharCode(10) + String.fromCharCode(10);\n  }\n  hasil.push({\n    json: {\n      nomor: meta.nomor,\n      nama_tahapan: meta.nama_tahapan,\n      estimasi_durasi: meta.estimasi_durasi,\n      tech_focus: meta.tech_focus,\n      deliverable: meta.deliverable,\n      filename: 'PRD_Tahap_' + meta.nomor + '_' + safe + '.md',\n      content: merged,\n      complete: (missing.length === 0 && truncated.length === 0),\n      missing_chunks: missing,\n      truncated_chunks: truncated,\n    }\n  });\n}\nhasil.sort((a, b) => ((a.json.nomor || 0) - (b.json.nomor || 0)));\nreturn hasil;"
+      },
+      "id": "7b3f0a1c-0001-4c2d-9e11-aa11bb22cc33",
+      "name": "Merge PRD Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\r\nconst ide = $('Prepare Generate Input').first().json.ide_result;\r\nconst pref = ($('Prepare Generate Input').first().json.preferensi) ? $('Prepare Generate Input').first().json.preferensi : {};\r\nconst designSystem = $('Prepare Generate Input').first().json.design_system || '';\r\nconst tahapanMeta = $('Parse Tahapan Result').first().json.tahapan_result;\r\nconst prd_files = allItems.map(item => item.json);\r\nconst semua_lengkap = prd_files.every(f => f.complete === true);\r\nreturn [{\r\n  json: {\r\n    success: true,\r\n    data: {\r\n      project_name: ide.project_name,\r\n      platform: ide.platform,\r\n      complexity_level: ide.complexity_level,\r\n      estimasi_skala: ide.estimasi_skala,\r\n      total_tahapan: tahapanMeta.total_tahapan,\r\n      semua_lengkap,\r\n      design_system: designSystem,\r\n      resiko: Array.isArray(ide.resiko) ? ide.resiko : [],\r\n      peluang: Array.isArray(ide.peluang) ? ide.peluang : [],\r\n      analisis_biaya: (ide.analisis_biaya && typeof ide.analisis_biaya === 'object') ? ide.analisis_biaya : null,\r\n      preferensi: pref,\r\n      ide_result: ide,\r\n      tahapan_result: tahapanMeta,\r\n      prd_files,\r\n    },\r\n  },\r\n}];\r\n"
+      },
+      "id": "3a53c116-246d-4297-b8f6-2ab6949b953b",
+      "name": "Aggregate Semua PRD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "55304b87-af73-43ef-b88a-417382b3779b",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2688,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prd-generate",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "8966a208-b767-4174-b386-31773995615a",
+      "name": "Webhook Generate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        224,
+        320
+      ],
+      "webhookId": "f6e361ac-4069-49bf-a27b-0176ac1906ac"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = ($json.body && typeof $json.body === 'object') ? $json.body : {};\r\nconst ide_result = (body.analisis && typeof body.analisis === 'object') ? body.analisis : {};\r\nconst pref = (body.preferensi && typeof body.preferensi === 'object') ? body.preferensi : {};\r\nconst design_system = body.design_system ? String(body.design_system) : '';\r\nreturn [{ json: { ide_result, preferensi: pref, design_system } }];\r\n"
+      },
+      "id": "38814912-1d2f-452b-bff2-b19620b5de26",
+      "name": "Prepare Generate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        320
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Analyze": {
+      "main": [
+        [
+          {
+            "node": "Build Step 1 Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Step 1 Prompt": {
+      "main": [
+        [
+          {
+            "node": "Qwen - Explore Idea",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Explore Idea": {
+      "main": [
+        [
+          {
+            "node": "Parse Ide Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Ide Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Generate": {
+      "main": [
+        [
+          {
+            "node": "Prepare Generate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Generate Input": {
+      "main": [
+        [
+          {
+            "node": "Build Step 2 Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Step 2 Prompt": {
+      "main": [
+        [
+          {
+            "node": "Qwen - Breakdown Tahapan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Breakdown Tahapan": {
+      "main": [
+        [
+          {
+            "node": "Parse Tahapan Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Tahapan Result": {
+      "main": [
+        [
+          {
+            "node": "Split Tahapan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Tahapan": {
+      "main": [
+        [
+          {
+            "node": "Build PRD Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PRD Prompt": {
+      "main": [
+        [
+          {
+            "node": "DeepSeek - Generate PRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek - Generate PRD": {
+      "main": [
+        [
+          {
+            "node": "Extract PRD Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract PRD Content": {
+      "main": [
+        [
+          {
+            "node": "IF Truncated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Truncated": {
+      "main": [
+        [
+          {
+            "node": "Build Continue Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge PRD Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Continue Prompt": {
+      "main": [
+        [
+          {
+            "node": "DeepSeek - Continue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek - Continue": {
+      "main": [
+        [
+          {
+            "node": "Extract Continue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Continue": {
+      "main": [
+        [
+          {
+            "node": "Merge PRD Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge PRD Chunks": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Semua PRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Semua PRD": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeout": -1
+  },
+  "versionId": "2a84d00c-e852-400c-98a9-a05ffd13d928",
+  "meta": {
+    "instanceId": "baa7a29e22aa7c9146d0a37c199fc9bc0a120db0c7b0d43b8ae91e9ddc53def4"
+  },
+  "nodeGroups": [],
+  "id": "JgrOig7gR2cndg81",
+  "tags": []
+}
