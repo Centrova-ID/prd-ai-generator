@@ -19,11 +19,11 @@ npm run dev
 ## Build Produksi
 
 ```bash
-npm run build   # output ke dist/
+npm run build   # output ke dist/prd-generator/
 npm run preview # pratinjau build lokal
 ```
 
-Build disajikan di bawah sub-path **`/prd-generator/`** (lihat `base` di `vite.config.ts`).
+Build disajikan di bawah sub-path **`/prd-generator/`** (lihat `base` dan `build.outDir` di `vite.config.ts`).
 
 ## Deployment ke Vercel
 
